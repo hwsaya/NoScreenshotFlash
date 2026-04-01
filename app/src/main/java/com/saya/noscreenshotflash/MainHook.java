@@ -7,6 +7,7 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 public class MainHook implements IXposedHookLoadPackage {
@@ -25,10 +26,24 @@ public class MainHook implements IXposedHookLoadPackage {
         try {
             Class<?> controllerClz = XposedHelpers.findClass(CONTROLLER_CLASS, lpparam.classLoader);
 
-            // Hook all methods named "getEntranceAnimation" regardless of params
+            // Hook 所有构造函数，不需要知道参数类型
+            for (Constructor<?> ctor : controllerClz.getDeclaredConstructors()) {
+                XposedBridge.log(TAG + ": hooking constructor " + ctor);
+                XposedBridge.hookMethod(ctor, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        hideFlashView(param.thisObject);
+                    }
+                });
+            }
+
+            // Hook getEntranceAnimation，截图开始动画时再次确保隐藏
             for (Method m : controllerClz.getDeclaredMethods()) {
-                if (m.getName().equals("getEntranceAnimation")) {
-                    XposedBridge.log(TAG + ": hooking " + m);
+                if (m.getName().equals("getEntranceAnimation")
+                        || m.getName().contains("Entrance")
+                        || m.getName().contains("flash")
+                        || m.getName().contains("Flash")) {
+                    XposedBridge.log(TAG + ": hooking method " + m.getName());
                     XposedBridge.hookMethod(m, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
@@ -37,14 +52,6 @@ public class MainHook implements IXposedHookLoadPackage {
                     });
                 }
             }
-
-            // 兜底：hook 构造函数，flashView 赋值后立刻隐藏
-            XposedHelpers.findAndHookConstructor(controllerClz, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    hideFlashView(param.thisObject);
-                }
-            });
 
         } catch (Throwable t) {
             XposedBridge.log(TAG + ": hook failed: " + t);
@@ -59,8 +66,8 @@ public class MainHook implements IXposedHookLoadPackage {
                 flashView.setAlpha(0f);
                 XposedBridge.log(TAG + ": flashView hidden");
             }
-        } catch (Throwable t) {
-            // flashView 还未赋值时会抛，忽略即可
+        } catch (Throwable ignored) {
+            // flashView 尚未赋值时忽略
         }
     }
 }
