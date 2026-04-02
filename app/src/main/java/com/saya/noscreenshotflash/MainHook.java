@@ -16,10 +16,42 @@ public class MainHook implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!TARGET_PKG.equals(lpparam.packageName)) return;
-        XposedBridge.log(TAG + ": loaded into " + lpparam.processName);
-        // TakeScreenshotService 跑在 :screenshot 子进程
         if (!lpparam.processName.contains("screenshot")) return;
-        XposedBridge.log(TAG + ": screenshot process, installing hooks");
+
+        XposedHelpers.findAndHookMethod(
+            ObjectAnimator.class, "start",
+            new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        ObjectAnimator anim = (ObjectAnimator) param.thisObject;
+                        if (!"alpha".equals(anim.getPropertyName())) return;
+                        Object target = anim.getTarget();
+                        if (!(target instanceof View)) return;
+                        View v = (View) target;
+                        String resName = getResName(v);
+                        if (resName != null && resName.contains("flash")) {
+                            param.setResult(null);
+                            v.setAlpha(0f);
+                            v.setVisibility(View.GONE);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        );
+    }
+
+    private String getResName(View v) {
+        try {
+            int id = v.getId();
+            if (id == View.NO_ID) return null;
+            return v.getResources().getResourceEntryName(id);
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+}
+
 
         // DEBUG: 打印所有 alpha ObjectAnimator，找到真实的 flash view 名称
         XposedHelpers.findAndHookMethod(
