@@ -16,7 +16,10 @@ public class MainHook implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (!TARGET_PKG.equals(lpparam.packageName)) return;
-        XposedBridge.log(TAG + ": loaded into SystemUI");
+        XposedBridge.log(TAG + ": loaded into " + lpparam.processName);
+        // TakeScreenshotService 跑在 :screenshot 子进程
+        if (!lpparam.processName.contains("screenshot")) return;
+        XposedBridge.log(TAG + ": screenshot process, installing hooks");
 
         // DEBUG: 打印所有 alpha ObjectAnimator，找到真实的 flash view 名称
         XposedHelpers.findAndHookMethod(
