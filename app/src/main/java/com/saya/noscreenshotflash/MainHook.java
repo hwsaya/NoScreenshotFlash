@@ -18,7 +18,7 @@ public class MainHook implements IXposedHookLoadPackage {
         if (!TARGET_PKG.equals(lpparam.packageName)) return;
         XposedBridge.log(TAG + ": loaded into SystemUI");
 
-        // 方案1：拦截 ObjectAnimator.ofFloat，如果是对 screenshot_flash view 的 alpha 动画就取消
+        // DEBUG: 打印所有 alpha ObjectAnimator，找到真实的 flash view 名称
         XposedHelpers.findAndHookMethod(
             ObjectAnimator.class, "start",
             new XC_MethodHook() {
@@ -31,18 +31,24 @@ public class MainHook implements IXposedHookLoadPackage {
                         if (!(target instanceof View)) return;
                         View v = (View) target;
                         String resName = getResName(v);
-                        if (resName != null && resName.contains("screenshot_flash")) {
-                            XposedBridge.log(TAG + ": blocked flash alpha anim on " + resName);
-                            param.setResult(null); // 阻止动画启动
+                        // 打印所有 alpha 动画目标，方便找到 flash view
+                        XposedBridge.log(TAG + ": alpha anim on view id=" + resName
+                                + " class=" + v.getClass().getSimpleName());
+                        // 拦截包含 flash 的
+                        if (resName != null && resName.contains("flash")) {
+                            XposedBridge.log(TAG + ": BLOCKING flash anim on " + resName);
+                            param.setResult(null);
                             v.setAlpha(0f);
                             v.setVisibility(View.GONE);
                         }
-                    } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        XposedBridge.log(TAG + ": anim hook err: " + t);
+                    }
                 }
             }
         );
 
-        // 方案2：拦截 View.setVisibility，如果是 screenshot_flash 被设为 VISIBLE 则拦截
+        // DEBUG: 打印所有 setVisibility(VISIBLE) 调用，找 flash 相关
         XposedHelpers.findAndHookMethod(
             View.class, "setVisibility", int.class,
             new XC_MethodHook() {
@@ -53,8 +59,13 @@ public class MainHook implements IXposedHookLoadPackage {
                         if (visibility != View.VISIBLE) return;
                         View v = (View) param.thisObject;
                         String resName = getResName(v);
-                        if (resName != null && resName.contains("screenshot_flash")) {
-                            XposedBridge.log(TAG + ": blocked setVisibility(VISIBLE) on " + resName);
+                        if (resName == null) return;
+                        // 只打印 screenshot 相关的 view
+                        if (resName.contains("screenshot") || resName.contains("flash")) {
+                            XposedBridge.log(TAG + ": setVisible on " + resName);
+                        }
+                        if (resName.contains("flash")) {
+                            XposedBridge.log(TAG + ": BLOCKING setVisible on " + resName);
                             param.setResult(null);
                         }
                     } catch (Throwable ignored) {}
